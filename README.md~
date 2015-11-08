@@ -1,0 +1,148 @@
+# docker-networking-test
+A small project to understand docker networking that has been added with Docker v1.9
+
+# Networking vs links
+When we used links previously using docker, the only option to link containers together is to use links, but it has the following shortcomings:
+
+1. Disrupting the link when a container is stopped, started or restarted,
+2. Unable to link containers together across different hosts,
+3. No need to use the 'ambassador' pattern to link containers together.
+
+Let's get started.
+
+# Simple single host ping sample
+When you have installed docker v1.9 you can get started right away using the new `docker-networking` feature with the new `docker network` command.
+
+Let's create a new network `linux` with the command:
+
+```
+$ docker network create linux
+```
+
+This creates a new network. Let's inspect the network:
+
+```
+$ docker network inspect linux
+[
+    {
+        "Name": "linux",
+        "Id": "ca11e2f032bfbb262efc0ef9c759d8a6b13c02cdfd225d09b85e9d7e7ab64c9f",
+        "Scope": "local",
+        "Driver": "bridge",
+        "IPAM": {
+            "Driver": "default",
+            "Config": [
+                {}
+            ]
+        },
+        "Containers": {},
+        "Options": {}
+    }
+]
+```
+
+We can see it uses the `bridge` strategy and no containers are part of that network. Let's fix that. We will launch two ubuntu containers and
+make them part of that network:
+
+```
+$ docker run -it --net=linux --name=ubuntu1 ubuntu
+$ docker run -it --net=linux --name=ubuntu2 ubuntu
+```
+
+We have two running containers, let's inspect the network now:
+
+```
+$ docker network inspect linux
+[
+    {
+        "Name": "linux",
+        "Id": "ca11e2f032bfbb262efc0ef9c759d8a6b13c02cdfd225d09b85e9d7e7ab64c9f",
+        "Scope": "local",
+        "Driver": "bridge",
+        "IPAM": {
+            "Driver": "default",
+            "Config": [
+                {}
+            ]
+        },
+        "Containers": {
+            "87e89c70a74628585316ca99bc13d412dac2f24c892bfd376dcac89b0a27d429": {
+                "EndpointID": "02e1297e65db1db80b275df53ebccb3871eb0fc1aff6ee5443b3bda843a07636",
+                "MacAddress": "02:42:ac:12:00:02",
+                "IPv4Address": "172.18.0.2/16",
+                "IPv6Address": ""
+            },
+            "e388fa26947f9e0422b568a5fa649907b089ad7418482d65c671dcb3c0f4462a": {
+                "EndpointID": "fd3e7343f0f475297fa9ba459e3182cb941be33683c0c80843d11b9233ccf7c3",
+                "MacAddress": "02:42:ac:12:00:03",
+                "IPv4Address": "172.18.0.3/16",
+                "IPv6Address": ""
+            }
+        },
+        "Options": {}
+    }
+]
+```
+
+When we cat `/etc/hosts` from `ubuntu1` we see the following contents:
+
+```
+172.18.0.3	ubuntu2
+172.18.0.3	ubuntu2.linux
+```
+
+and on `ubuntu2`:
+
+```
+172.18.0.2	ubuntu1
+172.18.0.2	ubuntu1.linux
+```
+
+Let's ping `ubuntu2.linux` from container `ubuntu1` and ping `ubuntu1.linux` from host `ubuntu2` using the `ping ubuntu1.linux` and `ping ubuntu2.linux` command. As you can see, it works.
+
+Now lets add a new container `ubuntu3` to the network `linux` and cat the `/etc/host` file:
+
+```
+$ docker run -it --net=linux --name=ubuntu3 ubuntu
+$ cat /etc/hosts
+172.18.0.3	ubuntu2.linux
+172.18.0.2	ubuntu1
+172.18.0.2	ubuntu1.linux
+172.18.0.3	ubuntu2
+```
+
+As you can see, the new container knows about the other ones, but when you cat the `/etc/hosts` file on the other containers, they also know about 
+container `ubuntu3`. Let's ping `ubuntu3.linux` from container `ubuntu1`. It works!
+
+Lets add another network `frontend` and launch an `ubuntu` container in that network:
+
+```
+$ docker network create frontend
+$ docker run -it --net=frontend --name=ubuntu4 ubuntu
+```
+
+When you now inpect the network `linux` you only see 3 containers, thats because the fourth container is running in another network called `frontend`. When you cat the `/etc/hosts` file of eg. container `ubuntu4`, you
+won't see the hosts from the `linux` network. You could try to ping `ubuntu4.frontend` but it won't work because the host is unknown. This is great! We have complete isolation between the networks.
+
+But say that we want to connect the `ubuntu4` container that is running in the `frontend` network to the `linux` network, how to we do that? Well, docker has the `docker network connect` command for that. 
+The purpose of the `connect` command is to connect a running `container` to another `network`,  so let's try it:
+
+```
+$ docker network connect linux ubuntu4
+```
+
+When we now inspect the `linux` network with the command `docker network inspect linux`, we see that four containers are part of that network, and when we inspect the `frontend` network we see that
+one container is part of that network. Also note that the new container has been added to all `/etc/hosts` files, so we can now ping the `ubuntu4.linux` host with the command `ping ubuntu4.linux` from eg. container `ubuntu1`, it works!
+Note that we cannot do the following: `ping ubuntu4.frontend` because of a couple of reasons, the first, the hostname is not present in the `/etc/hosts` file, so that host is (still) unknown, and secondly, the concept is that the `container` will be connected to a network, so `ubuntu4` is connected to `linux` and so the hostname is `ubuntu4.linux`. The `frontend` network is still fully isolated from any other network.
+
+Lets add an `nginx` container to the `frontend` network:
+
+```
+
+
+
+
+
+
+
+Let's ping the `ubuntu2.linux hos

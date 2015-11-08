@@ -1,2 +1,16 @@
 
 ubuntu1:
+  image: ubuntu
+  command: tail -f /var/log/dmesg
+  container_name: ubuntu1
+
+ubuntu2:
+  image: ubuntu
+  command: tail -f /var/log/dmesg
+  container_name: ubuntu2
+
+ubuntu3:
+  image: ubuntu
+  command: tail -f /var/log/dmesg
+  container_name: ubuntu3
+
