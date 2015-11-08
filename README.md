@@ -103,6 +103,10 @@ and on `ubuntu2`:
 Let's ping `ubuntu2.linux` from `ubuntu1` and ping `ubuntu1.linux` from `ubuntu2` using the `ping ubuntu1.linux` 
 and `ping ubuntu2.linux` command. 
 
+We have created the following:
+
+![Two containers and one network](http://url/to/img.png)
+
 Now lets add a new container `ubuntu3` to the network `linux` and cat the hosts file:
 
 ```bash
