@@ -105,7 +105,7 @@ and `ping ubuntu2.linux` command.
 
 We have created the following:
 
-![Two containers and one network](http://url/to/img.png)
+![Two containers and one network](https://github.com/dnvriend/docker-networking-test/blob/master/yed/local-two-containers.png)
 
 Now lets add a new container `ubuntu3` to the network `linux` and cat the hosts file:
 
