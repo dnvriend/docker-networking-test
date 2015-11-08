@@ -178,6 +178,10 @@ When we inspect the `frontend` and `linux` networks, we see that we have `four` 
 
 The `ubuntu4` container can connect to all hosts because it is a member of both the `linux` and the `frontend` network. 
 
+We have created the following:
+
+![two-networks-single-host](https://github.com/dnvriend/docker-networking-test/blob/master/yed/two-networks-single-host.png)
+
 # Single host networking with docker-compose
 Can we translate the configuration above to a docker-compose? Well, not exactly. There are a couple of things we must take into account:
 
