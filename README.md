@@ -11,6 +11,20 @@ the following shortcomings:
 
 Let's get started.
 
+# Installing docker, machine and compose
+I use [brew](http://brew.sh/) on the mac to install docker, machine and compose. Just type the following to install them:
+
+```bash
+$ brew update && brew upgrade --all
+$ brew install docker docker-machine docker-compose
+```
+
+Be sure to have the following minimum versions:
+
+- docker: v1.9.0
+- docker-machine: v0.5.0
+- docker-compose: v1.5.0
+
 # Single host networking example
 When you have installed `docker v1.9`, for example using [brew](http://brew.sh/) you can get started right away using 
 the new `docker-networking` feature with the new `docker network` command.
@@ -214,3 +228,84 @@ another network, but for now this works.
 We have created the following:
 
 ![docker-compose-single-host](https://github.com/dnvriend/docker-networking-test/blob/master/yed/docker-compose-single-host.png)
+
+# Multi host networking example
+Docker network also works across multiple hosts aka. [multi-host docker networking](https://blog.docker.com/2015/11/docker-multi-host-networking-ga/). 
+In our example, each host will be a local instance created by `docker-machine`, which is both safe (we don't have to worry about setting up security) 
+and free (most cloud providers charge for their services) and you don't have to fiddle with API keys, but it should also work with cloud providers.
+
+Each new host will be provisioned by docker-machine with a docker service. Each docker service that work together must share 
+information about its configuration, running containers, docker network configuration and such to a globally accessible 
+configuration store. Such a sysem is called [service discovery](https://www.digitalocean.com/community/tutorials/the-docker-ecosystem-service-discovery-and-distributed-configuration-stores). 
+Docker [supports](https://github.com/docker/docker/tree/master/pkg/discovery) the following configuation 
+stores: [etcd](https://coreos.com/etcd/), [consul](https://www.consul.io/) and [zookeeper](https://zookeeper.apache.org/). For this
+example we will be using `consul`, which has some nice advanced features including configurable health checks, ACL functionality, HAProxy configuration,
+and has a web ui to boot!
+
+So we will create the following:
+
+![multihost-local](https://github.com/dnvriend/docker-networking-test/blob/master/yed/multihost-local.png)
+
+The script `multihost-local.sh` will create three virtual machines using `docker-machine`:
+
+1. __mhl-consul:__ This docker host will run the [progrium/consul](https://hub.docker.com/r/progrium/consul/) container that will 
+ run a consul agent which is available on port 8500. The docker service will not take part sharing its configuration to other docker 
+ services so it runs stand-alone and will not know about other docker hosts. It will only run the consul key/value service that 
+ that the other docker hosts will use. 
+2. __mhl-demo0:__ A docker host that will share its configuration. At creation time, we supply the Engine daemon with the cluster-store option. 
+ This option tells the Engine the location of the key-value store for the overlay network. The bash expansion $(docker-machine ip mhl-consul) resolves 
+ to the IP address of the Consul server you created. The cluster-advertise option advertises the machine on the network.
+3. __mhl-demo1:__ Another docker host that will share its configuration the same way as `mhl-demo0`.
+
+After running the script and querying `docker-machine ls`, I get the following config:
+
+```bash
+NAME         ACTIVE   DRIVER       STATE     URL                         SWARM
+mhl-consul   -        virtualbox   Running   tcp://192.168.99.100:2376
+mhl-demo0    -        virtualbox   Running   tcp://192.168.99.101:2376
+mhl-demo1    -        virtualbox   Running   tcp://192.168.99.102:2376
+```
+
+When you logon to the consul web ui (available at http://192.168.99.100:8500/ui/#/dc1/kv/docker/nodes/), you will 
+see that there are 2 docker nodes that share this consul store. 
+
+# Creating a network
+Let's create a multi-host network! Note that we must specify a driver to use. Between hosts we must use the 
+`overlay` driver and not the default `bridge` driver, so we must specify the driver to use below:
+
+```bash
+$ docker $(docker-machine config mhl-demo0) network create --driver=overlay linux
+$ docker $(docker-machine config mhl-demo1) network ls
+NETWORK ID          NAME                DRIVER
+083908576ea3        linux               overlay
+752439daf1ea        bridge              bridge
+b299d1090469        none                null
+31051f446f4b        host                host
+```
+ 
+This command creates a new network called `linux` using the `overlay` networking driver. The command has been executed
+on the host `mhl-demo0` but the other host `mhl-demo1` instantly knows about the network as you can see.
+
+Let's launch a couple of ubuntu instances and check if we can ping:
+
+```
+$ docker $(docker-machine config mhl-demo0) run -it --net=linux --name=ubuntu1 ubuntu
+$ docker $(docker-machine config mhl-demo1) run -it --net=linux --name=ubuntu2 ubuntu
+```
+
+The host file of `ubuntu1` looks like:
+
+```bash
+10.0.0.3	ubuntu2
+10.0.0.3	ubuntu2.linux
+```
+
+and of `ubuntu2` looks like:
+
+```bash
+10.0.0.2	ubuntu1
+10.0.0.2	ubuntu1.linux
+```
+
+Let's ping `ubuntu2.linux` from `ubuntu1` and ping `ubuntu1.linux` from `ubuntu2` using the `ping ubuntu1.linux` 
+and `ping ubuntu2.linux` command. It works! 
