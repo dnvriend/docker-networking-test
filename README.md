@@ -309,3 +309,11 @@ and of `ubuntu2` looks like:
 
 Let's ping `ubuntu2.linux` from `ubuntu1` and ping `ubuntu1.linux` from `ubuntu2` using the `ping ubuntu1.linux` 
 and `ping ubuntu2.linux` command. It works! 
+
+While this is useful, you’ll notice that you have to use `docker-machine config` to point your docker client at each 
+machine `mhl-demo0` and `mhl-demo1`. Next we'll use [docker-swarm](https://github.com/docker/swarm) to turn a pool of 
+docker hosts into a single, virtual host what makes working with docker and docker-compose a whole lot easier, because
+we only have one docker configuration to set (the swarm) and then swarm schedules containers on any host in the swarm.
+ 
+
+
