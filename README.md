@@ -1,5 +1,6 @@
 # docker-networking-test
-A small project to understand docker networking that has been added in [Docker v1.9](https://github.com/docker/docker/blob/master/CHANGELOG.md#190-2015-11-03)
+A small project to understand [docker networking](https://docs.docker.com/engine/userguide/networking/dockernetworks/) that 
+has been added in [Docker v1.9](https://github.com/docker/docker/blob/master/CHANGELOG.md#190-2015-11-03)
 
 # Networking vs links
 When we used links previously using docker, the only option to link containers together was to use links, but it has 
