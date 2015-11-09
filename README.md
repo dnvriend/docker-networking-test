@@ -58,8 +58,10 @@ $ docker network inspect linux
 ]
 ```
 
-We can see it uses the `bridge` strategy and no `containers` are part of that network. Let's fix that. We will launch two 
-ubuntu containers and make them part of the `linux` network:
+We can see it uses the `bridge` strategy and no `containers` are part of that network. Let's fix that. 
+
+## Launching containers
+We will launch two ubuntu containers and make them part of the `linux` network:
 
 ```bash
 $ docker run -it --net=linux --name=ubuntu1 ubuntu
@@ -115,6 +117,7 @@ and on `ubuntu2`:
 172.18.0.2	ubuntu1.linux
 ```
 
+## Pinging the hosts
 Let's ping `ubuntu2.linux` from `ubuntu1` and ping `ubuntu1.linux` from `ubuntu2` using the `ping ubuntu1.linux` 
 and `ping ubuntu2.linux` command. 
 
@@ -193,6 +196,7 @@ When we inspect the `frontend` and `linux` networks, we see that we have `four` 
 
 The `ubuntu4` container can connect to all hosts because it is a member of both the `linux` and the `frontend` network. 
 
+## Recap
 We have created the following:
 
 ![two-networks-single-host](https://github.com/dnvriend/docker-networking-test/blob/master/yed/two-networks-single-host.png)
@@ -222,6 +226,7 @@ $ docker-compose -f single-host-networking.yml --x-networking up
 172.18.0.3	ubuntu2
 ```
 
+## Recap
 Because the project directory is called `docker-networking-test` the network name will be normalized to `dockernetworkingtest`
 and all containers will become a member of that network. This means that there is (still) no option to make containers members of 
 another network, but for now this works.
@@ -238,7 +243,7 @@ and free (most cloud providers charge for their services) and you don't have to 
 Each new host will be provisioned by docker-machine with a docker service. Each docker service that work together must share 
 information about its configuration, running containers, docker network configuration and such to a globally accessible 
 configuration store. Such a sysem is called [service discovery](https://www.digitalocean.com/community/tutorials/the-docker-ecosystem-service-discovery-and-distributed-configuration-stores). 
-Docker [supports](https://github.com/docker/docker/tree/master/pkg/discovery) the following configuation 
+Docker [supports](https://github.com/docker/docker/tree/master/pkg/discovery) the following configuration 
 stores: [etcd](https://coreos.com/etcd/), [consul](https://www.consul.io/) and [zookeeper](https://zookeeper.apache.org/). For this
 example we will be using `consul`, which has some nice advanced features including configurable health checks, ACL functionality, HAProxy configuration,
 and has a web ui to boot!
@@ -252,7 +257,7 @@ The script `multihost-local.sh` will create three virtual machines using `docker
 1. __mhl-consul:__ This docker host will run the [progrium/consul](https://hub.docker.com/r/progrium/consul/) container that will 
  run a consul agent which is available on port 8500. The docker service will not take part sharing its configuration to other docker 
  services so it runs stand-alone and will not know about other docker hosts. It will only run the consul key/value service that 
- that the other docker hosts will use. 
+ that the other docker hosts will use. It will be used by the `docker-network` service to share docker network configuration.
 2. __mhl-demo0:__ A docker host that will share its configuration. At creation time, we supply the Engine daemon with the cluster-store option. 
  This option tells the Engine the location of the key-value store for the overlay network. The bash expansion $(docker-machine ip mhl-consul) resolves 
  to the IP address of the Consul server you created. The cluster-advertise option advertises the machine on the network.
@@ -287,6 +292,7 @@ b299d1090469        none                null
 This command creates a new network called `linux` using the `overlay` networking driver. The command has been executed
 on the host `mhl-demo0` but the other host `mhl-demo1` instantly knows about the network as you can see.
 
+## Launching the hosts
 Let's launch a couple of ubuntu instances and check if we can ping:
 
 ```
@@ -308,13 +314,207 @@ and of `ubuntu2` looks like:
 10.0.0.2	ubuntu1.linux
 ```
 
+## Pinging the hosts
 Let's ping `ubuntu2.linux` from `ubuntu1` and ping `ubuntu1.linux` from `ubuntu2` using the `ping ubuntu1.linux` 
 and `ping ubuntu2.linux` command. It works! 
 
+## Recap
 While this is useful, you’ll notice that you have to use `docker-machine config` to point your docker client at each 
 machine `mhl-demo0` and `mhl-demo1`. Next we'll use [docker-swarm](https://github.com/docker/swarm) to turn a pool of 
-docker hosts into a single, virtual host what makes working with docker and docker-compose a whole lot easier, because
+docker hosts into a single, virtual host that makes working with docker and docker-compose a whole lot easier, because
 we only have one docker configuration to set (the swarm) and then swarm schedules containers on any host in the swarm.
  
+# Multi host networking with swarm example
+The previous setup has the following problem: in order to schedule running a container on a docker host, we have to know 
+the configuration of the docker host, and then instruct that host to create and launch a container. Wouldn't it be nice to turn all 
+the docker host into one single, virtual host? Docker-swarm doest just that, it turns a pool of docker hosts into a single, 
+virtual host, that will schedule containers to run on any docker host in the swarm. Of course, multi host networking also
+works.
+  
+We will create the following:
 
+![swarm-local](https://github.com/dnvriend/docker-networking-test/blob/master/yed/swarm-local.png)
 
+The script `swarm-local.sh` will create three virtual machines using `docker-machine`:
+
+1. __swl-consul:__ This docker host will run the [progrium/consul](https://hub.docker.com/r/progrium/consul/) container that will 
+ run a consul agent which is available on port 8500. The docker service will not take part sharing its configuration to other docker 
+ services so it runs stand-alone and will not know about other docker hosts. It will only run the consul key/value service that 
+ that the other docker hosts will use. It will be used by the `docker-network` service to share docker network configuration 
+ and also the `docker-swarm service` to maintain a list of IP addresses in the swarm.
+2. __swl-demo0:__ A docker host that will run two swarm instances (nodes), one `swarm-master` and a `swarm-agent`.
+3. __swl-demo1:__ Another docker host that will run a `swarm-agent`. 
+
+Every new docker host (node) must run a `swarm-agent` to become part of the swarm cluster. Every `swarm-node` will be 
+configured to use consul for service discovery of the swarm. You can imagine that the key/value store (consul) will be
+very important for the cluster to function, so in production, consul must be configured to be highly available. Docker-swarm
+supports multiple [discovery backends](https://github.com/docker/swarm/tree/master/discovery), here we will use Consul.
+   
+# Communicating with swarm
+To be able to instruct the swarm cluster to do stuff like creating a network or launching a container we must set
+the docker-environment to point to the `swarm-master`:
+
+```bash
+$ eval $(docker-machine env --swarm swl-demo0)
+```
+
+To get information about the swarm cluster, use the `docker info` command:
+
+```bash
+$ docker info
+Containers: 3
+Images: 2
+Role: primary
+Strategy: spread
+Filters: health, port, dependency, affinity, constraint
+Nodes: 2
+ swl-demo0: 192.168.99.101:2376
+  └ Containers: 2
+  └ Reserved CPUs: 0 / 4
+  └ Reserved Memory: 0 B / 8.179 GiB
+  └ Labels: executiondriver=native-0.2, kernelversion=4.1.12-boot2docker, operatingsystem=Boot2Docker 1.9.0 (TCL 6.4); master : 16e4a2a - Tue Nov  3 19:49:22 UTC 2015, provider=virtualbox, storagedriver=aufs
+ swl-demo1: 192.168.99.102:2376
+  └ Containers: 1
+  └ Reserved CPUs: 0 / 4
+  └ Reserved Memory: 0 B / 8.179 GiB
+  └ Labels: executiondriver=native-0.2, kernelversion=4.1.12-boot2docker, operatingsystem=Boot2Docker 1.9.0 (TCL 6.4); master : 16e4a2a - Tue Nov  3 19:49:22 UTC 2015, provider=virtualbox, storagedriver=aufs
+CPUs: 8
+Total Memory: 16.36 GiB
+Name: 9acf15bab2ae
+```
+
+# Creating a network
+Let's create a network. You don't have to instruct swarm to create a network, you could instruct any docker host in the 
+cluster to do that, but because we already have set the environment to the swarm-master, its a lot easier to use swarm.
+
+Note that we must specify a driver to use. Between hosts we must use the `overlay` driver and not the default `bridge` 
+driver, so we must specify the driver to use below:
+
+```bash
+$ docker network create --driver=overlay linux
+$ docker network ls
+NETWORK ID          NAME                DRIVER
+009dd541403a        swl-demo0/none      null
+1dac9f7cdd6e        linux               overlay
+0ac270a21266        swl-demo0/host      host
+7729c35f8a4a        swl-demo1/bridge    bridge
+84fe22d382f1        swl-demo1/none      null
+f328f1dcf034        swl-demo1/host      host
+99ca9a9c3db9        swl-demo0/bridge    bridge
+```
+ 
+Because we are in the `swarm-master` environment, you see all the networks on all swarm nodes. Notice that each NETWORK ID 
+is unique. The default networks on each engine and the single overlay network.
+
+We can switch to each docker host and list the network, we will see that every docker host reports about the linux network 
+and that means that the multi host networking is running, huzzah!
+
+```bash
+$ docker $(docker-machine config swl-demo0) network ls
+NETWORK ID          NAME                DRIVER
+1dac9f7cdd6e        linux               overlay
+009dd541403a        none                null
+0ac270a21266        host                host
+99ca9a9c3db9        bridge              bridge
+$ docker $(docker-machine config swl-demo0) network ls
+NETWORK ID          NAME                DRIVER
+1dac9f7cdd6e        linux               overlay
+99ca9a9c3db9        bridge              bridge
+009dd541403a        none                null
+0ac270a21266        host                host
+```
+
+## Launching the hosts
+Let's launch a couple of ubuntu instances. We will instruct swarm to launch a container on specific hosts using a 
+[docker-swarm-filter](https://github.com/docker/swarm/tree/master/scheduler/filter):
+
+```bash
+$ docker run -it --net=linux --name=ubuntu1 --env="constraint:node==swl-demo0" ubuntu
+$ docker run -it --net=linux --name=ubuntu2 --env="constraint:node==swl-demo1" ubuntu
+```
+
+The command will instruct swarm to launch a container running ubuntu on a node with the name `swl-demo0`, call the container
+`ubuntu1` and make it a member of the network `linux`. 
+
+The host file of `ubuntu1` looks like:
+
+```bash
+10.0.0.3	ubuntu2
+10.0.0.3	ubuntu2.linux
+```
+
+and of `ubuntu2` looks like:
+
+```bash
+10.0.0.2	ubuntu1
+10.0.0.2	ubuntu1.linux
+```
+
+## Pinging the hosts
+Let's ping `ubuntu2.linux` from `ubuntu1` and ping `ubuntu1.linux` from `ubuntu2` using the `ping ubuntu1.linux` 
+and `ping ubuntu2.linux` command. It works! 
+
+## Adding a docker-swarm node
+Let's add a new node to the swarm cluster called `swl-demo2`. You can use the `swarm-local-add-node.sh` script for this.
+
+When the new node has been launched we can query the swarm cluster:
+ 
+```bash
+$ docker info
+Containers: 6
+Images: 5
+Role: primary
+Strategy: spread
+Filters: health, port, dependency, affinity, constraint
+Nodes: 3
+ swl-demo0: 192.168.99.101:2376
+  └ Containers: 3
+  └ Reserved CPUs: 0 / 4
+  └ Reserved Memory: 0 B / 8.179 GiB
+  └ Labels: executiondriver=native-0.2, kernelversion=4.1.12-boot2docker, operatingsystem=Boot2Docker 1.9.0 (TCL 6.4); master : 16e4a2a - Tue Nov  3 19:49:22 UTC 2015, provider=virtualbox, storagedriver=aufs
+ swl-demo1: 192.168.99.102:2376
+  └ Containers: 2
+  └ Reserved CPUs: 0 / 4
+  └ Reserved Memory: 0 B / 8.179 GiB
+  └ Labels: executiondriver=native-0.2, kernelversion=4.1.12-boot2docker, operatingsystem=Boot2Docker 1.9.0 (TCL 6.4); master : 16e4a2a - Tue Nov  3 19:49:22 UTC 2015, provider=virtualbox, storagedriver=aufs
+ swl-demo2: 192.168.99.103:2376
+  └ Containers: 1
+  └ Reserved CPUs: 0 / 4
+  └ Reserved Memory: 0 B / 8.179 GiB
+  └ Labels: executiondriver=native-0.2, kernelversion=4.1.12-boot2docker, operatingsystem=Boot2Docker 1.9.0 (TCL 6.4); master : 16e4a2a - Tue Nov  3 19:49:22 UTC 2015, provider=virtualbox, storagedriver=aufs
+CPUs: 12
+Total Memory: 24.54 GiB
+Name: 9acf15bab2ae
+```
+
+Does it know about the `linux` network?
+
+```bash
+$ docker $(docker-machine config swl-demo2) network ls
+NETWORK ID          NAME                DRIVER
+1dac9f7cdd6e        linux               overlay
+0df96c200a6c        bridge              bridge
+f8c7d3f50ac3        none                null
+94c85144ce20        host                host
+```
+
+Yes it does! Let's launch an ubuntu on the new node and ping `ubuntu1.linux` and `ubuntu2.linux`:
+ 
+```bash
+$ docker run -it --net=linux --name=ubuntu3 --env="constraint:node==swl-demo2" ubuntu
+$ cat /etc/hosts
+10.0.0.3	ubuntu2
+10.0.0.3	ubuntu2.linux
+10.0.0.2	ubuntu1
+10.0.0.2	ubuntu1.linux
+```
+
+This is great! It's that easy to work with docker, swarm and add a new node, launch a container and do multi host networking. Great work guys!
+
+## Recap
+The swarm strategy has the following advantages:
+
+- a single environment configuration to communicate with the swarm, eg. using docker-compose (next up!)
+- using [docker-swarm-filters](https://github.com/docker/swarm/tree/master/scheduler/filter) to instruct swarm to schedule
+ a container on a node based upon rules.
+- adding more nodes to the cluster and still have a single virtual docker host.
