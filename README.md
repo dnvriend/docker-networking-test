@@ -514,7 +514,7 @@ This is great! It's that easy to work with docker, swarm and add a new node, lau
 ## Recap
 The swarm strategy has the following advantages:
 
-- a single environment configuration to communicate with the swarm, eg. using docker-compose (next up!)
+- a single environment configuration to communicate with the swarm, eg. using docker-compose
 - using [docker-swarm-filters](https://github.com/docker/swarm/tree/master/scheduler/filter) to instruct swarm to schedule
  a container on a node based upon rules.
 - adding more nodes to the cluster and still have a single virtual docker host.
